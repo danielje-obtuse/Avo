@@ -1,0 +1,121 @@
+import urequests
+import ujson
+import network
+import time
+import board
+import ili9341
+import xglcd_font
+
+def connect():
+# Connect to WLAN
+# Connect function from https://projects.raspberrypi.org/en/projects/get-started-pico-w/2
+    wlan = network.WLAN(network.STA_IF)
+    wlan.active(True)
+    wlan.connect(ssid, password) # Remove password if using airuc-guest
+    while wlan.isconnected() == False:
+        print('Waiting for connection...')
+        time.sleep(1)
+        
+def choose_recipe():
+    num = 0
+    print('\nYou have 15 seconds to pick your desired recipe!')
+    print(num)
+    while time.time() < time_s:
+        if button.value():
+            num += 1
+            print(num)
+            time.sleep(1)
+            if num == 4:
+                num = 0
+                print(num)
+    return num
+        
+def get_recipes():
+    recipe = urequests.get(f'https://api.spoonacular.com/recipes/complexSearch?apiKey={api_key}&query=chicken&number=5', headers = headers)
+    recipe_new = ujson.loads(recipe.text)['results']
+    
+    recipe_options = {}
+    for i in recipe_new:
+        recipe_title = i.get('title')
+        recipe_id = i.get('id')
+        recipe_options[recipe_title] = recipe_id
+    
+    return recipe_options
+
+def get_ingredients():
+    ingredients = urequests.get(f'https://api.spoonacular.com/recipes/{chosen_recipe_id}/ingredientWidget.json?apiKey={api_key}', headers = headers)
+    ingred = ujson.loads(ingredients.text)['ingredients']
+    print('\nThe ingredients needed are:\n')
+    
+    for i in ingred:
+        amount = i.get('amount')
+        metric = amount.get('metric')
+        value = metric.get('value')
+        unit = metric.get('unit')
+        name = i.get('name')
+        print(f'{value:.1f}{unit} {name}')
+        
+def get_instructions():
+    instructions = urequests.get(f'https://api.spoonacular.com/recipes/{chosen_recipe_id}/analyzedInstructions?apiKey={api_key}', headers = headers)
+    instruct = ujson.loads(instructions.text)[0]['steps']
+    print('\nGreat! Here are the instructions:')
+    
+    for step in instruct:
+        print((str(step.get('number'))) + '.', end = ' ')
+        print(step.get('step'))
+        
+def write_options(recipe_options):
+    text_length = font.measure_text(recipe)
+    font_height = font.height
+    print(recipe)
+    print(text_length)
+    if (display.width - text_length + num1) > 239:
+        
+    display.draw_text(display.width - text_length + num1, text_length, reversed(recipe), font, color, landscape = True, rotate_180 = False)
+    display.draw_text(display.width - font_height * 2 - 1, text_length, reversed(recipe), font, color, landscape = True, rotate_180 = False)
+    
+           
+ssid = 'YOUR-WIFI-NAME' # This should be ‘airuc-guest’ on campus Wi-Fi
+password = 'YOUR-WIFI-PASSWORD'
+
+try:
+    connect()
+    
+except KeyboardInterrupt:
+    board.reset()
+print('Connected. End of code.')
+
+api_key = 'YOUR-API-KEY'
+headers = {'Content-Type' : 'application/json'}
+button = board.Pin(1, board.Pin.IN, board.Pin.PULL_DOWN)
+spi = board.SPI(1, baudrate=10000000, sck=board.Pin(14), mosi=board.Pin(15))
+display = ili9341.Display(spi, dc=board.Pin(6), cs=board.Pin(17), rst=board.Pin(7))
+time_s = time.time() + 20
+font = xglcd_font.XglcdFont('/EspressoDolce18x24.c', 18, 24)
+color = ili9341.color565(255, 255, 255)
+
+recipe_options = get_recipes()
+print('Here are some suggested recipes: \n')
+text_length = font.measure_text('Here are some suggested recipes:')
+print(text_length)
+display.draw_text(display.width - text_length, text_length + 300, reversed('Here are some suggested recipes:'), font, color, landscape = True, rotate_180 = False)
+display.draw_text(200, 200, reversed('Here are some suggested recipes:'), font, color, landscape = True, rotate_180 = False)
+
+num1 = 0
+for recipe in recipe_options:
+    text_length = font.measure_text(recipe)
+    print(recipe)
+    print(text_length)
+    
+    display.draw_text(display.width - text_length + num1, text_length, reversed(recipe), font, color, landscape = True, rotate_180 = False, spacing = 5)
+    
+    num1 += 5
+    
+time.sleep(7)
+
+chosen_recipe = choose_recipe()
+chosen_recipe_id = list(recipe_options.values())[chosen_recipe]
+print(f'You selected {list(recipe_options.keys())[chosen_recipe]}!\n')
+
+get_ingredients()
+get_instructions()
